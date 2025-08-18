@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stunning Realtime GPS Tracker</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
+
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f0f2f5;
+        }
+
+        #map {
+            height: 100vh;
+            width: 100vw;
+            border-radius: 15px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        /* Floating Buttons */
+        .locate-btn, .theme-btn {
+            position: absolute;
+            bottom: 20px;
+            background: #4CAFEF;
+            color: white;
+            border: none;
+            padding: 12px 15px;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+            font-size: 18px;
+        }
+
+        .locate-btn:hover, .theme-btn:hover {
+            background: #3795E0;
+            transform: scale(1.1);
+        }
+
+        .locate-btn { right: 20px; }
+        .theme-btn { right: 80px; }
+
+        /* Info Panel */
+        .info-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255,255,255,0.9);
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <button class="locate-btn" title="Track Me">📍</button>
+    <button class="theme-btn" title="Toggle Theme">🌓</button>
+    <div class="info-panel" id="infoPanel">Click 📍 to start tracking.</div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script>
+        // Initialize map
+        let map = L.map('map').setView([14.0860746, 100.608406], 6);
+
+        // Map layers
+        let light = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
+        let dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png');
+        let baseMaps = {"Light": light, "Dark": dark};
+        L.control.layers(baseMaps).addTo(map);
+        light.addTo(map);
+
+        // Custom Icon
+        let myIcon = L.icon({
+            iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
+            iconSize: [40, 40],
+            iconAnchor: [20, 40],
+            popupAnchor: [0, -35]
+        });
+
+        // Marker and path
+        let marker = L.marker([14.0860746, 100.608406], { icon: myIcon })
+                     .addTo(map)
+                     .bindPopup('Starting Location')
+                     .openPopup();
+        let pathCoordinates = [];
+        let polyline = L.polyline(pathCoordinates, {color: 'blue'}).addTo(map);
+
+        // Info panel
+        let infoPanel = document.getElementById('infoPanel');
+
+        // Theme toggle
+        let currentLayer = light;
+        document.querySelector('.theme-btn').addEventListener('click', () => {
+            map.removeLayer(currentLayer);
+            currentLayer = (currentLayer === light) ? dark : light;
+            map.addLayer(currentLayer);
+        });
+
+        // Real-time tracking
+        let watchId;
+        document.querySelector('.locate-btn').addEventListener('click', () => {
+            if (navigator.geolocation) {
+                if(watchId) navigator.geolocation.clearWatch(watchId);
+                watchId = navigator.geolocation.getCurrentPosition(position => {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    const speed = ((position.coords.speed || 0) * 3.6).toFixed(1);
+                    const heading = (position.coords.heading || 0).toFixed(0);
+
+                    map.setView([lat, lng], 15);
+                    marker.setLatLng([lat, lng])
+                          .bindPopup(`You are here!<br>Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}<br>Speed: ${speed} km/h<br>Heading: ${heading}°`)
+                          .openPopup();
+
+                    // Update path
+                    pathCoordinates.push([lat, lng]);
+                    polyline.setLatLngs(pathCoordinates);
+
+                    // Update info panel
+                    infoPanel.innerHTML = `
+                        <b>Current Location:</b><br>
+                        Lat: ${lat.toFixed(5)}<br>
+                        Lng: ${lng.toFixed(5)}<br>
+                        Speed: ${speed} km/h<br>
+                        Heading: ${heading}°
+                    `;
+
+                    // Geofencing alert example (circle around Bangkok)
+                    const bangkok = L.latLng(13.7563, 100.5018);
+                    const distance = map.distance([lat, lng], bangkok);
+                    if(distance < 5000){
+                        infoPanel.innerHTML += "<br><span style='color:red; font-weight:bold;'>⚠ You entered the Bangkok zone!</span>";
+                    }
+
+                }, () => alert('Unable to retrieve your location'), { enableHighAccuracy: true, maximumAge: 0 });
+            } else {
+                alert('Geolocation is not supported by your browser');
+            }
+        });
+
+        // Add multiple POI markers
+        const locations = [
+            {name: "Bangkok", coords: [13.7563, 100.5018]},
+            {name: "Chiang Mai", coords: [18.7883, 98.9853]},
+            {name: "Phuket", coords: [7.8804, 98.3923]}
+        ];
+        locations.forEach(loc => {
+            L.marker(loc.coords, {icon: myIcon}).addTo(map)
+             .bindPopup(loc.name);
+        });
+
+        // Add geofence circle around Bangkok
+        L.circle([13.7563, 100.5018], { radius: 5000, color: 'red', fillOpacity: 0.2 }).addTo(map);
+    </script>
+</body>
+</html>
