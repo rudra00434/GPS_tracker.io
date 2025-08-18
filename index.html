@@ -40,13 +40,9 @@ body, html {
 }
 .locate-btn {right:20px;}
 .theme-btn {right:80px;}
-@media(max-width:600px){
-    .locate-btn{right:15px; bottom:15px; padding:12px 15px; font-size:18px;}
-    .theme-btn{right:70px; bottom:15px; padding:12px 15px; font-size:18px;}
-}
 .info-panel {
-    position: absolute;
-    top: 20px;
+    position: fixed; /* always visible */
+    top: 80px;       /* moved lower to avoid zoom controls */
     left: 20px;
     background: rgba(255,255,255,0.9);
     padding: 15px;
@@ -54,6 +50,16 @@ body, html {
     box-shadow: 0 4px 15px rgba(0,0,0,0.2);
     font-size: 14px;
     line-height: 1.5;
+    z-index: 1001; /* on top of map */
+}
+@media(max-width:600px){
+    .locate-btn{right:15px; bottom:15px; padding:12px 15px; font-size:18px;}
+    .theme-btn{right:70px; bottom:15px; padding:12px 15px; font-size:18px;}
+    .info-panel {
+        top: 70px;    /* slightly lower */
+        left: 10px;
+        right: 10px;  /* allow width to adjust */
+    }
 }
 </style>
 </head>
@@ -76,20 +82,24 @@ let currentLayer = light;
 L.control.layers({"Light": light,"Dark": dark}).addTo(map);
 light.addTo(map);
 
+// Theme toggle
 document.querySelector('.theme-btn').addEventListener('click', ()=>{
     map.removeLayer(currentLayer);
     currentLayer = (currentLayer===light)? dark : light;
     map.addLayer(currentLayer);
 });
 
-// Custom marker
+// Custom marker with popup
 let myIcon = L.icon({
     iconUrl:'https://cdn-icons-png.flaticon.com/512/684/684908.png',
     iconSize:[40,40],
     iconAnchor:[20,40],
     popupAnchor:[0,-35]
 });
-let marker = L.marker([14.0860746,100.608406],{icon:myIcon}).addTo(map).bindPopup('Starting Location').openPopup();
+let marker = L.marker([14.0860746,100.608406], {icon: myIcon})
+    .addTo(map)
+    .bindPopup('Starting Location')
+    .openPopup();
 
 // Path
 let pathCoordinates = [];
@@ -117,6 +127,7 @@ function updateDistances(lat,lng){
 // Real-time tracking
 let watchId, isTracking=false;
 let pathBounds = L.latLngBounds([]);
+let lastPos = null; // for manual speed calculation
 
 document.querySelector('.locate-btn').addEventListener('click', ()=>{
     if(!navigator.geolocation){ alert('Geolocation not supported'); return; }
@@ -125,8 +136,16 @@ document.querySelector('.locate-btn').addEventListener('click', ()=>{
         watchId = navigator.geolocation.watchPosition(pos=>{
             const lat = pos.coords.latitude;
             const lng = pos.coords.longitude;
-            const speed = ((pos.coords.speed||0)*3.6).toFixed(1);
             const heading = (pos.coords.heading||0).toFixed(0);
+
+            // Manual speed calculation (km/h)
+            let speed = 'N/A';
+            if(lastPos){
+                const distance = map.distance([lat,lng],[lastPos.lat,lastPos.lng]); // meters
+                const time = (pos.timestamp - lastPos.timestamp)/1000; // seconds
+                speed = time>0 ? ((distance/time)*3.6).toFixed(1) : '0.0';
+            }
+            lastPos = {lat,lng,timestamp: pos.timestamp};
 
             // Smooth marker movement
             let currentLatLng = marker.getLatLng();
@@ -138,9 +157,7 @@ document.querySelector('.locate-btn').addEventListener('click', ()=>{
             let moveInterval = setInterval(()=>{
                 if(i>=steps) clearInterval(moveInterval);
                 else {
-                    let nextLat = currentLatLng.lat + deltaLat*i;
-                    let nextLng = currentLatLng.lng + deltaLng*i;
-                    marker.setLatLng([nextLat,nextLng]);
+                    marker.setLatLng([currentLatLng.lat + deltaLat*i, currentLatLng.lng + deltaLng*i]);
                     i++;
                 }
             },50);
