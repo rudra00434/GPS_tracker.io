@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stunning Realtime GPS Tracker</title>
+    <title>Realtime GPS Tracker</title>
 
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
@@ -25,28 +25,37 @@
             overflow: hidden;
         }
 
-        /* Floating Buttons */
+        /* Floating Action Buttons */
         .locate-btn, .theme-btn {
-            position: absolute;
+            position: fixed; /* Always visible */
             bottom: 20px;
-            background: #4CAFEF;
+            background: rgba(76, 175, 239, 0.85); /* Semi-transparent blue */
             color: white;
             border: none;
-            padding: 12px 15px;
+            padding: 14px 18px;
             border-radius: 50%;
             cursor: pointer;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-            transition: all 0.3s ease;
-            font-size: 18px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+            transition: all 0.3s ease, box-shadow 0.3s ease;
+            font-size: 20px;
+            z-index: 1000; /* On top of map */
+            backdrop-filter: blur(4px);
         }
 
         .locate-btn:hover, .theme-btn:hover {
-            background: #3795E0;
-            transform: scale(1.1);
+            background: rgba(55, 149, 224, 0.95);
+            transform: scale(1.15);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
         }
 
         .locate-btn { right: 20px; }
         .theme-btn { right: 80px; }
+
+        /* Mobile responsiveness */
+        @media (max-width: 600px) {
+            .locate-btn { right: 15px; bottom: 15px; padding: 12px 15px; font-size: 18px; }
+            .theme-btn { right: 70px; bottom: 15px; padding: 12px 15px; font-size: 18px; }
+        }
 
         /* Info Panel */
         .info-panel {
@@ -95,7 +104,7 @@
                      .bindPopup('Starting Location')
                      .openPopup();
         let pathCoordinates = [];
-        let polyline = L.polyline(pathCoordinates, {color: 'blue'}).addTo(map);
+        let polyline = L.polyline(pathCoordinates, {color: 'red', weight: 5}).addTo(map); // Red path
 
         // Info panel
         let infoPanel = document.getElementById('infoPanel');
@@ -108,12 +117,42 @@
             map.addLayer(currentLayer);
         });
 
+        // POIs
+        const locations = [
+            {name: "Bangkok", coords: [13.7563, 100.5018]},
+            {name: "Chiang Mai", coords: [18.7883, 98.9853]},
+            {name: "Phuket", coords: [7.8804, 98.3923]}
+        ];
+
+        locations.forEach(loc => {
+            L.marker(loc.coords, {icon: myIcon}).addTo(map)
+             .bindPopup(loc.name);
+        });
+
+        // Function to calculate distance to all POIs
+        function updateDistances(lat, lng) {
+            let distancesText = '';
+            locations.forEach(loc => {
+                const distanceMeters = map.distance([lat, lng], loc.coords);
+                const distanceKm = (distanceMeters / 1000).toFixed(2);
+                distancesText += `<br><b>Distance to ${loc.name}:</b> ${distanceKm} km`;
+            });
+            return distancesText;
+        }
+
         // Real-time tracking
         let watchId;
+        let isTracking = false;
+
         document.querySelector('.locate-btn').addEventListener('click', () => {
-            if (navigator.geolocation) {
-                if(watchId) navigator.geolocation.clearWatch(watchId);
-                watchId = navigator.geolocation.getCurrentPosition(position => {
+            if (!navigator.geolocation) {
+                alert('Geolocation is not supported by your browser');
+                return;
+            }
+
+            if (!isTracking) {
+                // Start tracking
+                watchId = navigator.geolocation.watchPosition(position => {
                     const lat = position.coords.latitude;
                     const lng = position.coords.longitude;
                     const speed = ((position.coords.speed || 0) * 3.6).toFixed(1);
@@ -134,31 +173,30 @@
                         Lat: ${lat.toFixed(5)}<br>
                         Lng: ${lng.toFixed(5)}<br>
                         Speed: ${speed} km/h<br>
-                        Heading: ${heading}°
-                    `;
+                        Heading: ${heading}°`;
+                    
+                    // Add distances dynamically
+                    infoPanel.innerHTML += updateDistances(lat, lng);
 
-                    // Geofencing alert example (circle around Bangkok)
+                    // Geofencing alert for Bangkok
                     const bangkok = L.latLng(13.7563, 100.5018);
-                    const distance = map.distance([lat, lng], bangkok);
-                    if(distance < 5000){
+                    const distanceToBangkok = map.distance([lat, lng], bangkok);
+                    if(distanceToBangkok < 5000){
                         infoPanel.innerHTML += "<br><span style='color:red; font-weight:bold;'>⚠ You entered the Bangkok zone!</span>";
                     }
 
-                }, () => alert('Unable to retrieve your location'), { enableHighAccuracy: true, maximumAge: 0 });
-            } else {
-                alert('Geolocation is not supported by your browser');
-            }
-        });
+                }, error => {
+                    alert('Unable to retrieve your location');
+                }, { enableHighAccuracy: true, maximumAge: 0 });
 
-        // Add multiple POI markers
-        const locations = [
-            {name: "Bangkok", coords: [13.7563, 100.5018]},
-            {name: "Chiang Mai", coords: [18.7883, 98.9853]},
-            {name: "Phuket", coords: [7.8804, 98.3923]}
-        ];
-        locations.forEach(loc => {
-            L.marker(loc.coords, {icon: myIcon}).addTo(map)
-             .bindPopup(loc.name);
+                isTracking = true;
+                document.querySelector('.locate-btn').textContent = '🛑'; // Change icon to stop
+            } else {
+                // Stop tracking
+                navigator.geolocation.clearWatch(watchId);
+                isTracking = false;
+                document.querySelector('.locate-btn').textContent = '📍'; // Reset icon
+            }
         });
 
         // Add geofence circle around Bangkok
